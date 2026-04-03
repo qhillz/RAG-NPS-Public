@@ -1,5 +1,30 @@
+# app.py
 from pathlib import Path
 import streamlit as st
+from dotenv import load_dotenv
+from langchain.chat_models import init_chat_model
+from vector_store import build_vector_store
+from langchain.tools import tool
+from vector_store import get_retriever
+from langchain.agents import create_agent
+
+@tool
+def rag_tool(query: str):
+    """
+    2025년 국민연금기금의 운용수익률 및 자산 포트폴리오 성과 데이터를 검색하는 도구입니다.
+    """
+    retriever = get_retriever()
+    docs = retriever.invoke(query)
+    print(docs)
+
+    return "\n\n".join([doc.page_content for doc in docs])
+
+load_dotenv()
+
+tools = [rag_tool]
+agent = create_agent(model="gpt-5.4-mini", tools=tools)
+
+# llm = init_chat_model('gpt-5.4-nano')
 
 # 업로드 경로 생성 함수
 def save_uploaded_file(uploaded_file):
@@ -18,7 +43,11 @@ def render_sidebar():
             accept_multiple_files=True,
         )
 
-        if uploaded_files:
+        if uploaded_files and st.button("벡터스토어 생성"):
+            file_path = save_uploaded_file(uploaded_files[0])
+            result = build_vector_store(file_path)
+            st.session_state.vector_store_ready = True
+            st.success(result)
             st.session_state.uploaded_files_meta = [
                 {"name": file.name, "size": file.size} for file in uploaded_files
             ]
@@ -48,9 +77,16 @@ def render_chat():
     query = st.chat_input("질문을 입력해 주세요.")
     if not query:
         return
+    # response = llm.invoke(query)
+    # answer = response.content
+    response = agent.invoke(
+        {"messages"	:	[{"role":	"user",	"content":	query}]}
+    )
+
+    answer	=	response['messages'][-1].content
 
     st.session_state.messages.append({"role": "user", "content": query})
-    st.session_state.messages.append({"role": "assistant", "content": "안녕하세요."})
+    st.session_state.messages.append({"role": "assistant", "content": answer})
     st.rerun()
 
 
